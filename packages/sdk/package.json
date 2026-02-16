@@ -1,0 +1,78 @@
+{
+  "name": "@arbitrage-platform/sdk",
+  "version": "1.0.0",
+  "description": "TypeScript SDK for multi-chain arbitrage trading operations",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./chains": {
+      "import": "./dist/chains/index.mjs",
+      "require": "./dist/chains/index.js",
+      "types": "./dist/chains/index.d.ts"
+    },
+    "./dex": {
+      "import": "./dist/dex/index.mjs",
+      "require": "./dist/dex/index.js",
+      "types": "./dist/dex/index.d.ts"
+    },
+    "./utils": {
+      "import": "./dist/utils/index.mjs",
+      "require": "./dist/utils/index.js",
+      "types": "./dist/utils/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "arbitrage",
+    "defi",
+    "dex",
+    "trading",
+    "ethereum",
+    "web3",
+    "blockchain",
+    "uniswap",
+    "sushiswap",
+    "flash-loan"
+  ],
+  "author": "Arbitrage Platform",
+  "license": "MIT",
+  "dependencies": {
+    "viem": "^2.0.0",
+    "ethers": "^6.9.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0",
+    "tsup": "^8.0.0",
+    "@types/node": "^20.10.0"
+  },
+  "peerDependencies": {
+    "typescript": ">=5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/arbitrage-platform/sdk.git"
+  },
+  "bugs": {
+    "url": "https://github.com/arbitrage-platform/sdk/issues"
+  },
+  "homepage": "https://github.com/arbitrage-platform/sdk#readme"
+}

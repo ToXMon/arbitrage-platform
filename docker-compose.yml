@@ -1,0 +1,171 @@
+# Docker Compose for Arbitrage Platform - Local Development
+# Usage: docker-compose up -d
+
+version: "3.9"
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: arbitrage-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-arbitrage}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-arbitrage_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-arbitrage_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-arbitrage} -d ${POSTGRES_DB:-arbitrage_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - arbitrage-network
+
+  # Redis Cache & Pub/Sub
+  redis:
+    image: redis:7-alpine
+    container_name: arbitrage-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - arbitrage-network
+
+  # API Service
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    container_name: arbitrage-api
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: postgresql://${POSTGRES_USER:-arbitrage}:${POSTGRES_PASSWORD:-arbitrage_secret}@postgres:5432/${POSTGRES_DB:-arbitrage_db}
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:-your_jwt_secret_change_in_production}
+      API_KEY: ${API_KEY:-your_api_key_change_in_production}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - arbitrage-network
+
+  # Frontend Service (Next.js)
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+    container_name: arbitrage-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
+      NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-ws://localhost:3001}
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - arbitrage-network
+
+  # Bot Worker - Ethereum Mainnet
+  bot-ethereum:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.bot
+    container_name: arbitrage-bot-ethereum
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      CHAIN_ID: 1
+      CHAIN_NAME: ethereum
+      RPC_URL: ${ETH_RPC_URL:-https://eth-mainnet.g.alchemy.com/v2/YOUR_KEY}
+      WS_URL: ${ETH_WS_URL:-wss://eth-mainnet.g.alchemy.com/v2/YOUR_KEY}
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://${POSTGRES_USER:-arbitrage}:${POSTGRES_PASSWORD:-arbitrage_secret}@postgres:5432/${POSTGRES_DB:-arbitrage_db}
+      PRIVATE_KEY: ${ETH_PRIVATE_KEY}
+      FLASHBOTS_RELAY: https://relay.flashbots.net
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    networks:
+      - arbitrage-network
+    profiles:
+      - bots
+
+  # Bot Worker - Arbitrum
+  bot-arbitrum:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.bot
+    container_name: arbitrage-bot-arbitrum
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      CHAIN_ID: 42161
+      CHAIN_NAME: arbitrum
+      RPC_URL: ${ARB_RPC_URL:-https://arb-mainnet.g.alchemy.com/v2/YOUR_KEY}
+      WS_URL: ${ARB_WS_URL:-wss://arb-mainnet.g.alchemy.com/v2/YOUR_KEY}
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://${POSTGRES_USER:-arbitrage}:${POSTGRES_PASSWORD:-arbitrage_secret}@postgres:5432/${POSTGRES_DB:-arbitrage_db}
+      PRIVATE_KEY: ${ARB_PRIVATE_KEY}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    networks:
+      - arbitrage-network
+    profiles:
+      - bots
+
+networks:
+  arbitrage-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local

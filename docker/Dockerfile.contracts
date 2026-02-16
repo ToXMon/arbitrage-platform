@@ -1,0 +1,59 @@
+# Foundry-based image for contract deployment
+FROM ghcr.io/foundry-rs/foundry:latest AS builder
+
+WORKDIR /app
+
+# Copy contracts source
+COPY packages/contracts ./packages/contracts
+
+# Copy root files for monorepo context
+COPY tsconfig.json ./
+COPY turbo.json ./
+
+WORKDIR /app/packages/contracts
+
+# Initialize foundry if not already done
+# (handles case where contracts use Hardhat but we want Foundry for deployment)
+RUN if [ ! -f "foundry.toml" ]; then \
+        forge init --no-commit --force . 2>/dev/null || true; \
+    fi
+
+# Install dependencies
+RUN forge install foundry-rs/forge-std --no-commit 2>/dev/null || true
+
+# Build contracts
+RUN forge build
+
+# Stage 2: Production deployment image
+FROM ghcr.io/foundry-rs/foundry:latest AS production
+
+WORKDIR /app
+
+# Copy built contracts and deployment scripts
+COPY --from=builder /app/packages/contracts/out ./out
+COPY --from=builder /app/packages/contracts/script ./script
+COPY --from=builder /app/packages/contracts/foundry.toml ./foundry.toml 2>/dev/null || true
+COPY --from=builder /app/packages/contracts/remappings.txt ./remappings.txt 2>/dev/null || true
+COPY --from=builder /app/packages/contracts/lib ./lib 2>/dev/null || true
+
+# Create deployment script entrypoint
+RUN echo '#!/bin/bash\nset -e\n\necho "Starting contract deployment..."\n\n# Validate required environment variables
+if [ -z "$RPC_URL" ]; then\n    echo "Error: RPC_URL environment variable is required"\n    exit 1\nfi\n\nif [ -z "$PRIVATE_KEY" ]; then\n    echo "Error: PRIVATE_KEY environment variable is required"\n    exit 1\nfi\n\n# Run deployment script\nforge script script/Deploy.s.sol:DeployScript \\
+    --rpc-url "$RPC_URL" \\
+    --private-key "$PRIVATE_KEY" \\
+    --broadcast \\
+    --verify
+\necho "Deployment complete!"\n' > /entrypoint.sh && chmod +x /entrypoint.sh
+
+# Environment variables for deployment
+# RPC_URL - RPC endpoint for target network
+# PRIVATE_KEY - Deployer private key
+# ETHERSCAN_API_KEY - For contract verification (optional)
+# VERIFIER_URL - Custom verifier URL (optional)
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD forge --version || exit 1
+
+# Entrypoint for deployment
+ENTRYPOINT ["/entrypoint.sh"]
