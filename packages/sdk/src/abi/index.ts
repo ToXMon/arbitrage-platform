@@ -1,6 +1,6 @@
 /**
  * Contract ABIs for the arbitrage platform
- * These will be populated from compiled contracts in packages/contracts
+ * Generated from packages/contracts/src/Arbitrage.sol
  */
 
 // ERC20 minimal ABI
@@ -38,6 +38,14 @@ export const UNISWAP_V3_QUOTER_ABI = [
   'function quoteExactOutputSingle(address tokenIn, address tokenOut, uint24 fee, uint256 amountOut, uint160 sqrtPriceLimitX96) external returns (uint256 amountIn)',
 ] as const;
 
+// Uniswap V3 SwapRouter ABI
+export const UNISWAP_V3_SWAPROUTER_ABI = [
+  'struct ExactInputSingleParams { address tokenIn; address tokenOut; uint24 fee; address recipient; uint256 deadline; uint256 amountIn; uint256 amountOutMinimum; uint160 sqrtPriceLimitX96; }',
+  'struct ExactOutputSingleParams { address tokenIn; address tokenOut; uint24 fee; address recipient; uint256 deadline; uint256 amountOut; uint256 amountInMaximum; uint160 sqrtPriceLimitX96; }',
+  'function exactInputSingle(ExactInputSingleParams calldata params) external payable returns (uint256 amountOut)',
+  'function exactOutputSingle(ExactOutputSingleParams calldata params) external payable returns (uint256 amountIn)',
+] as const;
+
 // WETH ABI
 export const WETH_ABI = [
   'function deposit() payable',
@@ -48,23 +56,99 @@ export const WETH_ABI = [
   'event Withdrawal(address indexed src, uint256 wad)',
 ] as const;
 
-// Arbitrage contract ABI (placeholder - will be updated after contract compilation)
+// Aave V3 Pool ABI (for flash loans)
+export const AAVE_V3_POOL_ABI = [
+  'function flashLoanSimple(address receiverAddress, address asset, uint256 amount, bytes calldata params, uint16 referralCode) external',
+  'function FLASHLOAN_PREMIUM_TOTAL() view returns (uint128)',
+] as const;
+
+// Aave V3 PoolAddressesProvider ABI
+export const AAVE_V3_PROVIDER_ABI = [
+  'function getPool() view returns (address)',
+  'function getPoolConfigurator() view returns (address)',
+] as const;
+
+// Balancer V2 Vault ABI (for flash loans)
+export const BALANCER_V2_VAULT_ABI = [
+  'function flashLoan(address recipient, address[] memory tokens, uint256[] memory amounts, bytes memory userData) external',
+  'function getPoolTokens(bytes32 poolId) view returns (address[] memory tokens, uint256[] memory balances, uint256 lastChangeBlock)',
+] as const;
+
+/**
+ * Arbitrage contract ABI - matches packages/contracts/src/Arbitrage.sol
+ * 
+ * FlashLoanProvider enum: 0 = AAVE_V3, 1 = BALANCER_V2
+ */
 export const ARBITRAGE_ABI = [
-  'function executeArbitrage(address tokenBorrow, uint256 amountBorrow, tuple(address[] path, uint24[] fees) swapPath1, tuple(address[] path, uint24[] fees) swapPath2) external',
+  // View functions
+  'function chainConfigs(uint256 chainId) view returns (address aaveProvider, address balancerVault, bool isActive)',
+  'function CHAIN_ID() view returns (uint256)',
+  'function authorizedCallers(address) view returns (bool)',
+  'function accumulatedProfits(address token) view returns (uint256)',
+  'function minProfitBps() view returns (uint256)',
   'function owner() view returns (address)',
   'function paused() view returns (bool)',
+  
+  // Main execution function
+  'function executeTrade(address[] calldata _routerPath, address[] calldata _tokenPath, uint24[] calldata _fees, uint256 _flashAmount, uint8 _provider) external',
+  
+  // Aave V3 flash loan callback
+  'function executeOperation(address asset, uint256 amount, uint256 premium, address initiator, bytes calldata params) external returns (bool)',
+  
+  // Balancer V2 flash loan callback
+  'function receiveFlashLoan(address sender, address[] memory tokens, uint256[] memory amounts, uint256[] memory feeAmounts, bytes memory userData) external',
+  
+  // Admin functions
   'function pause() external',
   'function unpause() external',
-  'function withdraw(address token, uint256 amount) external',
-  'function rescueETH(uint256 amount) external',
-  'event ArbitrageExecuted(address indexed executor, address indexed tokenBorrow, uint256 amountBorrow, uint256 profit, uint256 gasUsed)',
+  'function setAuthorizedCaller(address caller, bool authorized) external',
+  'function setMinProfitBps(uint256 _minProfitBps) external',
+  'function setChainConfig(uint256 chainId, address aaveProvider, address balancerVault) external',
+  'function emergencyWithdraw(address token, address to) external',
+  'function withdrawProfits(address token) external',
+  
+  // View functions
+  'function getChainConfig(uint256 chainId) external view returns (tuple(address aaveProvider, address balancerVault, bool isActive))',
+  'function getAavePool() external view returns (address)',
+  
+  // Events
+  'event FlashLoanExecuted(address indexed provider, address indexed token, uint256 amount, uint256 fee, uint256 timestamp)',
+  'event ArbitrageExecuted(address indexed tokenIn, address indexed tokenOut, uint256 amountIn, uint256 amountOut, uint256 profit, address[] routerPath, uint256 timestamp)',
+  'event ProfitRealized(address indexed token, uint256 amount, address indexed recipient, uint256 timestamp)',
+  'event EmergencyWithdraw(address indexed token, uint256 amount, address indexed recipient, uint256 timestamp)',
+  'event ChainAddressesUpdated(uint256 indexed chainId, address aaveProvider, address balancerVault, uint256 timestamp)',
   'event Paused(address account)',
   'event Unpaused(address account)',
+  
+  // Errors (for decoding)
+  'error InvalidAmount()',
+  'error InvalidPath()',
+  'error InsufficientProfit()',
+  'error FlashLoanFailed()',
+  'error UnauthorizedCaller()',
+  'error TransferFailed()',
+  'error InvalidChain()',
+  'error NoProfitToWithdraw()',
 ] as const;
 
 // Type exports
 export type ERC20 = typeof ERC20_ABI;
 export type UniswapV3Pool = typeof UNISWAP_V3_POOL_ABI;
 export type UniswapV3Quoter = typeof UNISWAP_V3_QUOTER_ABI;
+export type UniswapV3SwapRouter = typeof UNISWAP_V3_SWAPROUTER_ABI;
 export type WETH = typeof WETH_ABI;
+export type AaveV3Pool = typeof AAVE_V3_POOL_ABI;
+export type AaveV3Provider = typeof AAVE_V3_PROVIDER_ABI;
+export type BalancerV2Vault = typeof BALANCER_V2_VAULT_ABI;
 export type Arbitrage = typeof ARBITRAGE_ABI;
+
+/**
+ * Flash loan provider enum values
+ * Must match the enum in Arbitrage.sol
+ */
+export const FlashLoanProvider = {
+  AAVE_V3: 0,
+  BALANCER_V2: 1,
+} as const;
+
+export type FlashLoanProviderType = typeof FlashLoanProvider[keyof typeof FlashLoanProvider];
