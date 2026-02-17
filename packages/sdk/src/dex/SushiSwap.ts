@@ -168,8 +168,13 @@ export class SushiSwapAdapter implements DexAdapter {
         args: [amountIn, [tokenIn, tokenOut]],
       }) as bigint[];
 
+      const amountOut = amounts[amounts.length - 1];
+      if (amountOut === undefined) {
+        throw new Error('No output amount returned by router');
+      }
+
       return {
-        amountOut: amounts[amounts.length - 1],
+        amountOut,
         path: [tokenIn, tokenOut],
         gasEstimate: BigInt(120000),
         fee: 3000, // 0.3% fixed fee
@@ -278,7 +283,12 @@ export class SushiSwapAdapter implements DexAdapter {
         args: [amountIn, path],
       }) as bigint[];
 
-      return amounts[amounts.length - 1];
+      const amountOut = amounts[amounts.length - 1];
+      if (amountOut === undefined) {
+        throw new Error('No output amount returned by router');
+      }
+
+      return amountOut;
     } catch (error) {
       throw new Error(`Failed to get amounts out: ${error}`);
     }

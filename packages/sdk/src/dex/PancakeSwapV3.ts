@@ -263,14 +263,16 @@ export class PancakeSwapV3Adapter implements DexAdapter {
         }),
       ]);
 
+      const slot0Data = slot0 as readonly [bigint, number, number, number, number, number, boolean];
+
       return {
         address: poolAddress,
         token0: token0 as Address,
         token1: token1 as Address,
         fee,
         liquidity: liquidity as bigint,
-        sqrtPriceX96: (slot0 as any[])[0],
-        tick: (slot0 as any[])[1],
+        sqrtPriceX96: slot0Data[0],
+        tick: slot0Data[1],
       };
     } catch (error) {
       throw new Error(`Failed to get pool info: ${error}`);
@@ -298,11 +300,18 @@ export class PancakeSwapV3Adapter implements DexAdapter {
     let currentAmount = amountIn;
     
     for (let i = 0; i < path.length - 1; i++) {
+      const tokenIn = path[i];
+      const tokenOut = path[i + 1];
+      const fee = fees[i];
+      if (!tokenIn || !tokenOut || fee === undefined) {
+        throw new Error('Invalid route path or fees');
+      }
+
       const quote = await this.getQuote(
-        path[i],
-        path[i + 1],
+        tokenIn,
+        tokenOut,
         currentAmount,
-        fees[i]
+        fee
       );
       currentAmount = quote.amountOut;
     }

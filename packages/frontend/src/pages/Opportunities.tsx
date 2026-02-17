@@ -16,6 +16,8 @@ export function Opportunities() {
     refetchInterval: 5000,
   });
 
+  const opportunityList = Array.isArray(opportunities?.data) ? opportunities.data : [];
+
   if (isLoading) {
     return <div className="loading">Loading opportunities...</div>;
   }
@@ -27,20 +29,22 @@ export function Opportunities() {
       <Card>
         <Table
           headers={['ID', 'Chain', 'Token In', 'Token Out', 'Profit USD', 'Status', 'Time']}
-          rows={(opportunities?.data || []).map((o: any) => [
-            o.id.slice(0, 8),
-            o.route.chainId,
-            o.tokenIn.slice(0, 10) + '...',
-            o.tokenOut.slice(0, 10) + '...',
-            `$${o.profitUSD.toFixed(2)}`,
-            'Available',
-            new Date(o.timestamp).toLocaleTimeString(),
+          rows={opportunityList.map((o: any) => [
+            o.id?.slice(0, 8) || '-',
+            o.chain || o.route?.chainId || '-',
+            o.tokenIn ? `${o.tokenIn.slice(0, 10)}...` : '-',
+            o.tokenOut ? `${o.tokenOut.slice(0, 10)}...` : '-',
+            `$${Number(o.profitUSD ?? o.expectedProfit ?? 0).toFixed(2)}`,
+            o.executed ? 'Executed' : 'Available',
+            new Date(o.timestamp || Date.now()).toLocaleTimeString(),
           ])}
         />
-        {(!opportunities?.data || opportunities.data.length === 0) && (
+        {opportunityList.length === 0 && (
           <div className="empty-state">No opportunities found</div>
         )}
       </Card>
     </div>
   );
 }
+
+export default Opportunities;

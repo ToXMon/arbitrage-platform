@@ -101,6 +101,36 @@ services:
     networks:
       - arbitrage-network
 
+  # Bot Worker - Sepolia Testnet
+  bot-sepolia:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.bot
+    container_name: arbitrage-bot-sepolia
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      CHAIN_ID: 11155111
+      CHAIN_NAME: sepolia
+      RPC_URL: ${SEPOLIA_RPC:-https://rpc.sepolia.org}
+      WS_URL: ${SEPOLIA_WS:-wss://ethereum-sepolia-rpc.publicnode.com}
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://${POSTGRES_USER:-arbitrage}:${POSTGRES_PASSWORD:-arbitrage_secret}@postgres:5432/${POSTGRES_DB:-arbitrage_db}
+      PRIVATE_KEY: ${ETH_PRIVATE_KEY}
+      ARBITRAGE_CONTRACT_ADDRESS: ${ARBITRAGE_CONTRACT_ADDRESS}
+      LOG_LEVEL: ${LOG_LEVEL:-debug}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    networks:
+      - arbitrage-network
+    profiles:
+      - testnet
+
   # Bot Worker - Ethereum Mainnet
   bot-ethereum:
     build:

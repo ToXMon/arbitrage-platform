@@ -17,10 +17,14 @@ export function Dashboard() {
   const { data: stats } = useQuery({
     queryKey: ['stats'],
     queryFn: async () => {
-      const [trades, opportunities] = await Promise.all([
+      const [tradesPayload, opportunitiesPayload] = await Promise.all([
         fetch('/api/trades/stats').then((r) => r.json()),
         fetch('/api/opportunities/stats').then((r) => r.json()),
       ]);
+
+      const trades = tradesPayload?.data ?? tradesPayload ?? {};
+      const opportunities = opportunitiesPayload?.data ?? opportunitiesPayload ?? {};
+
       return { trades, opportunities };
     },
     refetchInterval: 10000,
@@ -94,3 +98,5 @@ export function Dashboard() {
     </div>
   );
 }
+
+export default Dashboard;

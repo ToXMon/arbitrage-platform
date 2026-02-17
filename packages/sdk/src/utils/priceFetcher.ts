@@ -3,7 +3,7 @@
  * @module utils/priceFetcher
  */
 
-import type { DexAdapter, QuoteResult, PoolInfo } from '../dex/types';
+import type { DexAdapter, PoolInfo } from '../dex/types';
 import type { ChainConfig } from '../chains/types';
 import { DEFAULT_FEE_TIERS } from './constants';
 
@@ -45,16 +45,14 @@ export interface DexPrice {
  */
 export class PriceFetcher {
   private adapters: DexAdapter[];
-  private chain: ChainConfig;
 
   /**
    * Create new price fetcher
    * @param adapters - Array of DEX adapters to use
    * @param chain - Chain configuration
    */
-  constructor(adapters: DexAdapter[], chain: ChainConfig) {
+  constructor(adapters: DexAdapter[], _chain: ChainConfig) {
     this.adapters = adapters;
-    this.chain = chain;
   }
 
   /**

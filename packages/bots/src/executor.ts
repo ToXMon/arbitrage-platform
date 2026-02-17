@@ -16,36 +16,34 @@ import Big from 'big.js';
 import {
   ChainConfig,
   ChainId,
-  DexConfig,
-  TokenInfo,
-  PoolInfo,
-  ArbitrageOpportunity,
   getChainConfig,
   DEFAULT_BOT_SETTINGS,
   BotSettings,
 } from './config.js';
+import type { PoolInfo, ArbitrageOpportunity } from './scanner.js';
 import { logger } from './index.js';
 
 /**
- * Arbitrage contract ABI (simplified)
+ * Flash loan provider enum (matches Solidity contract)
+ */
+export enum FlashLoanProvider {
+  AAVE_V3 = 0,
+  BALANCER_V2 = 1,
+}
+
+/**
+ * Arbitrage contract ABI (updated for multi-DEX flash loans)
  */
 const ARBITRAGE_CONTRACT_ABI = [
-  'function executeTrade(address[] calldata routerPath, address[] calldata tokenPath, uint24 fee, uint256 amount) external',
+  'function executeTrade(address[] calldata routerPath, address[] calldata tokenPath, uint24[] calldata fees, uint256 flashAmount, uint8 provider) external',
   'function owner() view returns (address)',
   'function pause() external',
   'function unpause() external',
-  'function withdraw(address token, uint256 amount) external',
-  'function emergencyWithdraw() external',
-];
-
-/**
- * Router ABI for swap operations
- */
-const ROUTER_ABI = [
-  'function exactInputSingle((address tokenIn, address tokenOut, uint24 fee, address recipient, uint256 amountIn, uint256 amountOutMinimum, uint160 sqrtPriceLimitX96)) external payable returns (uint256 amountOut)',
-  'function exactOutputSingle((address tokenIn, address tokenOut, uint24 fee, address recipient, uint256 amountOut, uint256 amountInMaximum, uint160 sqrtPriceLimitX96)) external payable returns (uint256 amountIn)',
-  'function quoteExactInputSingle(address tokenIn, address tokenOut, uint24 fee, uint256 amountIn, uint160 sqrtPriceLimitX96) external returns (uint256 amountOut)',
-  'function quoteExactOutputSingle(address tokenIn, address tokenOut, uint24 fee, uint256 amount, uint160 sqrtPriceLimitX96) external returns (uint256 amountIn)',
+  'function withdrawProfits(address token) external',
+  'function emergencyWithdraw(address token, address to) external',
+  'function accumulatedProfits(address token) view returns (uint256)',
+  'function getAavePool() view returns (address)',
+  'function getChainConfig(uint256 chainId) view returns (tuple(address aaveProvider, address balancerVault, bool isActive))',
 ];
 
 /**
@@ -177,7 +175,7 @@ class GasEstimator {
       // Add buffer for safety
       return (estimated * 120n) / 100n;
     } catch (error) {
-      logger.warn('Gas estimation failed, using default:', error);
+      logger.warn({ error }, 'Gas estimation failed, using default');
       return this.chainConfig.gas.gasLimit;
     }
   }
@@ -271,7 +269,6 @@ export class TransactionExecutor {
 
       // Get pool liquidity
       const buyLiquidity = await this.getPoolLiquidity(buyPool);
-      const sellLiquidity = await this.getPoolLiquidity(sellPool);
 
       // Calculate optimal trade size (50% of available liquidity)
       const percentage = Big(0.5);
@@ -293,9 +290,9 @@ export class TransactionExecutor {
         sqrtPriceLimitX96: 0n,
       };
 
-      const [amountIn] = await buyQuoter.quoteExactOutputSingle.staticCall(
-        buyQuoteParams
-      );
+      const quoteExactOutputSingle = buyQuoter.getFunction('quoteExactOutputSingle');
+      const amountInQuote = await quoteExactOutputSingle.staticCall(buyQuoteParams);
+      const amountIn = BigInt(amountInQuote.toString());
 
       // Quote selling on second DEX
       const sellQuoter = new Contract(
@@ -312,9 +309,9 @@ export class TransactionExecutor {
         sqrtPriceLimitX96: 0n,
       };
 
-      const [amountOut] = await sellQuoter.quoteExactInputSingle.staticCall(
-        sellQuoteParams
-      );
+      const quoteExactInputSingle = sellQuoter.getFunction('quoteExactInputSingle');
+      const amountOutQuote = await quoteExactInputSingle.staticCall(sellQuoteParams);
+      const amountOut = BigInt(amountOutQuote.toString());
 
       // Calculate gas cost
       const gasCost = await this.gasEstimator.calculateGasCost(
@@ -370,7 +367,7 @@ export class TransactionExecutor {
 
       return result;
     } catch (error) {
-      logger.error('Error checking profitability:', error);
+      logger.error({ error }, 'Error checking profitability');
       return {
         isProfitable: false,
         amountIn: 0n,
@@ -388,20 +385,22 @@ export class TransactionExecutor {
    */
   private async getPoolLiquidity(pool: PoolInfo): Promise<bigint> {
     try {
-      const liquidity = await pool.contract.liquidity();
-      return liquidity;
+      const liquidityFn = pool.contract.getFunction('liquidity');
+      const liquidity = await liquidityFn.staticCall();
+      return BigInt(liquidity.toString());
     } catch (error) {
-      logger.error(`Error getting liquidity for ${pool.dexName}:`, error);
+      logger.error({ error, dexName: pool.dexName }, 'Error getting liquidity');
       return 0n;
     }
   }
 
   /**
-   * Execute arbitrage trade
+   * Execute arbitrage trade with flash loan
    */
   public async executeTrade(
     opportunity: ArbitrageOpportunity,
-    amount: bigint
+    amount: bigint,
+    provider: FlashLoanProvider = FlashLoanProvider.AAVE_V3
   ): Promise<ExecutionResult> {
     if (this.isExecuting) {
       return {
@@ -415,20 +414,23 @@ export class TransactionExecutor {
     const startTime = Date.now();
 
     try {
-      logger.info('Executing arbitrage trade...');
+      logger.info(`Executing arbitrage trade with ${provider === FlashLoanProvider.AAVE_V3 ? 'Aave V3' : 'Balancer V2'} flash loan...`);
 
       const { tokenPair, buyPool, sellPool } = opportunity;
 
       // Build router path
       const routerPath = [buyPool.dexConfig.router, sellPool.dexConfig.router];
 
-      // Build token path
-      const tokenPath = [tokenPair.token0.address, tokenPair.token1.address];
+      // Build token path (circular: token0 -> token1 -> token0)
+      const tokenPath = [tokenPair.token0.address, tokenPair.token1.address, tokenPair.token0.address];
+      
+      // Build fee array for each swap leg
+      const fees = [tokenPair.poolFee, tokenPair.poolFee];
 
       // Get balances before
-      const tokenBalanceBefore = await tokenPair.token0.contract.balanceOf(
-        this.wallet.address
-      );
+      const tokenBalanceBeforeFn = tokenPair.token0.contract.getFunction('balanceOf');
+      const tokenBalanceBefore = await tokenBalanceBeforeFn.staticCall(this.wallet.address);
+      const tokenBalanceBeforeBigInt = BigInt(tokenBalanceBefore.toString());
       const ethBalanceBefore = await this.provider.getBalance(this.wallet.address);
 
       // Estimate gas
@@ -437,8 +439,9 @@ export class TransactionExecutor {
         this.arbitrageContract.interface.encodeFunctionData('executeTrade', [
           routerPath,
           tokenPath,
-          tokenPair.poolFee,
+          fees,
           amount,
+          provider,
         ]),
         this.wallet.address
       );
@@ -455,8 +458,9 @@ export class TransactionExecutor {
         data: this.arbitrageContract.interface.encodeFunctionData('executeTrade', [
           routerPath,
           tokenPath,
-          tokenPair.poolFee,
+          fees,
           amount,
+          provider,
         ]),
         gasLimit,
         maxFeePerGas,
@@ -485,7 +489,10 @@ export class TransactionExecutor {
 
           throw new Error('Transaction failed');
         } catch (error) {
-          logger.warn(`Attempt ${attempt}/${this.settings.maxRetries} failed:`, error);
+          logger.warn(
+            { error, attempt, maxRetries: this.settings.maxRetries },
+            'Execution attempt failed'
+          );
 
           if (attempt < this.settings.maxRetries) {
             await new Promise((resolve) =>
@@ -504,13 +511,13 @@ export class TransactionExecutor {
       }
 
       // Get balances after
-      const tokenBalanceAfter = await tokenPair.token0.contract.balanceOf(
-        this.wallet.address
-      );
+      const tokenBalanceAfterFn = tokenPair.token0.contract.getFunction('balanceOf');
+      const tokenBalanceAfter = await tokenBalanceAfterFn.staticCall(this.wallet.address);
+      const tokenBalanceAfterBigInt = BigInt(tokenBalanceAfter.toString());
       const ethBalanceAfter = await this.provider.getBalance(this.wallet.address);
 
       // Calculate profit
-      const tokenProfit = tokenBalanceAfter - tokenBalanceBefore;
+      const tokenProfit = tokenBalanceAfterBigInt - tokenBalanceBeforeBigInt;
       const ethSpent = ethBalanceBefore - ethBalanceAfter;
 
       const executionTime = Date.now() - startTime;
@@ -532,7 +539,7 @@ export class TransactionExecutor {
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.error('Trade execution failed:', errorMessage);
+      logger.error({ error: errorMessage }, 'Trade execution failed');
 
       return {
         success: false,
@@ -549,7 +556,7 @@ export class TransactionExecutor {
    */
   public async dryRun(
     opportunity: ArbitrageOpportunity,
-    amount: bigint
+    _amount: bigint
   ): Promise<ExecutionResult> {
     logger.info('Running dry run simulation...');
 
@@ -558,7 +565,7 @@ export class TransactionExecutor {
 
       return {
         success: profitability.isProfitable,
-        error: profitability.reason,
+        ...(profitability.reason ? { error: profitability.reason } : {}),
         timestamp: Date.now(),
       };
     } catch (error) {
@@ -600,29 +607,48 @@ export class TransactionExecutor {
   }
 
   /**
-   * Withdraw tokens from arbitrage contract
+   * Withdraw accumulated profits from arbitrage contract
    */
-  public async withdrawToken(
-    tokenAddress: string,
-    amount: bigint
+  public async withdrawProfits(
+    tokenAddress: string
   ): Promise<TransactionReceipt> {
-    logger.info(`Withdrawing ${amount.toString()} tokens from contract...`);
+    logger.info(`Withdrawing accumulated profits for token ${tokenAddress}...`);
 
-    const tx = await this.arbitrageContract.withdraw(tokenAddress, amount);
+    const withdrawProfits = this.arbitrageContract.getFunction('withdrawProfits');
+    const tx = await withdrawProfits.send(tokenAddress);
     const receipt = await tx.wait();
+    if (!receipt) {
+      throw new Error('Withdrawal transaction receipt not available');
+    }
 
-    logger.info(`Withdrawal complete: ${receipt.hash}`);
+    logger.info(`Profit withdrawal complete: ${receipt.hash}`);
     return receipt;
+  }
+  
+  /**
+   * Get accumulated profits for a token
+   */
+  public async getAccumulatedProfits(tokenAddress: string): Promise<bigint> {
+    const accumulatedProfits = this.arbitrageContract.getFunction('accumulatedProfits');
+    const profits = await accumulatedProfits.staticCall(tokenAddress);
+    return BigInt(profits.toString());
   }
 
   /**
    * Emergency withdraw all funds
    */
-  public async emergencyWithdraw(): Promise<TransactionReceipt> {
-    logger.warn('Executing emergency withdrawal...');
+  public async emergencyWithdraw(
+    tokenAddress: string,
+    recipient: string
+  ): Promise<TransactionReceipt> {
+    logger.warn(`Executing emergency withdrawal for ${tokenAddress}...`);
 
-    const tx = await this.arbitrageContract.emergencyWithdraw();
+    const emergencyWithdraw = this.arbitrageContract.getFunction('emergencyWithdraw');
+    const tx = await emergencyWithdraw.send(tokenAddress, recipient);
     const receipt = await tx.wait();
+    if (!receipt) {
+      throw new Error('Emergency withdrawal transaction receipt not available');
+    }
 
     logger.info(`Emergency withdrawal complete: ${receipt.hash}`);
     return receipt;

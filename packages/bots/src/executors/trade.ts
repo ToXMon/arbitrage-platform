@@ -45,7 +45,7 @@ export class TradeExecutor {
     }
   }
 
-  private async simulateTrade(request: ExecutionRequest): Promise<void> {
+  private async simulateTrade(_request: ExecutionRequest): Promise<void> {
     // Simulate network delay
     await new Promise((resolve) => setTimeout(resolve, 100));
 

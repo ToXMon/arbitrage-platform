@@ -9,15 +9,16 @@ import { ethers } from 'ethers';
  * Supported blockchain networks
  */
 export type ChainId = 
-  | 1      // Ethereum Mainnet
-  | 42161  // Arbitrum One
-  | 10     // Optimism
-  | 8453   // Base
-  | 137    // Polygon
-  | 56     // BSC
-  | 43114  // Avalanche
-  | 250    // Fantom
-  | 59144; // Linea
+  | 1        // Ethereum Mainnet
+  | 11155111 // Sepolia Testnet
+  | 42161    // Arbitrum One
+  | 10       // Optimism
+  | 8453     // Base
+  | 137      // Polygon
+  | 56       // BSC
+  | 43114    // Avalanche
+  | 250      // Fantom
+  | 59144;   // Linea
 
 /**
  * DEX configuration interface
@@ -78,7 +79,13 @@ export const COMMON_TOKENS: Record<ChainId, Record<string, string>> = {
     WETH: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2',
     USDC: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
     USDT: '0xdAC17F958D2ee523a2206206994597C13D831ec7',
-    DAI: '0x6B175474E89094C44Da98b954EescdeCB3F9e74C',
+    DAI: '0x6B175474E89094C44Da98b954EedeAC495271d0F',
+  },
+  11155111: { // Sepolia Testnet
+    WETH: '0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14',
+    USDC: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238',
+    DAI: '0xFF34B3d4Aee8ddCd6F9AFFFB6Fe49bD371b8a357',
+    LINK: '0x779877A7B0D9E8603169DdbD7836e478b4624789',
   },
   42161: { // Arbitrum
     WETH: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1',
@@ -123,18 +130,34 @@ export const COMMON_TOKENS: Record<ChainId, Record<string, string>> = {
  * DEX configurations per chain
  */
 export const DEX_CONFIGS: Record<ChainId, Record<string, DexConfig>> = {
+  11155111: { // Sepolia Testnet
+    uniswap: {
+      name: 'Uniswap V3',
+      router: '0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E',
+      quoter: '0xEd1f6473345F45b75F8179591dd5bA1888f1024b',
+      factory: '0x0227628f3F023bb0B980b67D528571c95c6DaC1d',
+      poolInitCodeHash: '0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54',
+    },
+    sushiswap: {
+      name: 'SushiSwap V3',
+      router: '0x2E6cd2d30aa43f40aa81619ff4b6E0a41479B13F',
+      quoter: '0xEd1f6473345F45b75F8179591dd5bA1888f1024b',
+      factory: '0xc35DADB65012eC5796536bD9864eD8773aBc74C4',
+      poolInitCodeHash: '0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54',
+    },
+  },
   1: { // Ethereum
     uniswap: {
       name: 'Uniswap V3',
       router: '0xE592427A0AEce92De3Edee1F18E0157C05861564',
-      quoter: '0xb27308f9F9036087095A53dE9737804e4bD226E9',
+      quoter: '0x61fFE014bA17989E743c5F6cB21bF9697530B21e',
       factory: '0x1F98431c8aD98523631AE4a59f267346ea31F984',
       poolInitCodeHash: '0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54',
     },
     sushiswap: {
       name: 'SushiSwap V3',
       router: '0x2626664c2603336E57B271c5C0b26F421741e481',
-      quoter: '0xb27308f9F9036087095A53dE9737804e4bD226E9',
+      quoter: '0x64e8802FE490fa7cc61d3463958199161Bb608A7',
       factory: '0xbACEB8eC6b9355Dfc0269C18bac9d6E2Bdc29C4F',
       poolInitCodeHash: '0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54',
     },
@@ -245,15 +268,37 @@ export const DEX_CONFIGS: Record<ChainId, Record<string, DexConfig>> = {
  * Full chain configurations
  */
 export const CHAIN_CONFIGS: Record<ChainId, ChainConfig> = {
+  11155111: {
+    chainId: 11155111,
+    name: 'Sepolia',
+    rpcUrls: [
+      process.env.SEPOLIA_RPC ?? process.env.ETH_RPC ?? 'https://rpc.sepolia.org',
+      'https://ethereum-sepolia-rpc.publicnode.com',
+    ],
+    wsRpcUrls: [
+      process.env.SEPOLIA_WS ?? process.env.ETH_WS_RPC ?? 'wss://ethereum-sepolia-rpc.publicnode.com',
+    ],
+    blockTime: 12000,
+    nativeCurrency: { name: 'Sepolia Ether', symbol: 'ETH', decimals: 18 },
+    dexes: DEX_CONFIGS[11155111],
+    tokens: {},
+    gas: {
+      gasLimit: 500000n,
+      maxFeePerGas: ethers.parseUnits('20', 'gwei'),
+      maxPriorityFeePerGas: ethers.parseUnits('2', 'gwei'),
+      gasPriceMultiplier: 1.2,
+    },
+    explorer: 'https://sepolia.etherscan.io',
+  },
   1: {
     chainId: 1,
     name: 'Ethereum',
     rpcUrls: [
-      process.env.ETH_RPC ?? 'https://eth.llamarpc.com',
+      process.env.ETH_RPC ?? process.env.ETH_RPC_URL ?? 'https://eth.llamarpc.com',
       'https://ethereum.publicnode.com',
     ],
     wsRpcUrls: [
-      process.env.ETH_WS_RPC ?? 'wss://ethereum.publicnode.com',
+      process.env.ETH_WS_RPC ?? process.env.ETH_WS_URL ?? 'wss://ethereum.publicnode.com',
     ],
     blockTime: 12000,
     nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },

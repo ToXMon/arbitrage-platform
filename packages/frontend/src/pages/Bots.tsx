@@ -8,11 +8,24 @@ import { Card } from '../components/Card';
 export function Bots() {
   const queryClient = useQueryClient();
   
-  const { data: bots, isLoading } = useQuery({
+  const { data: bots = [], isLoading } = useQuery({
     queryKey: ['bots'],
     queryFn: async () => {
       const res = await fetch('/api/bots');
-      return res.json();
+      if (!res.ok) {
+        return [];
+      }
+
+      const payload = await res.json();
+      if (Array.isArray(payload)) {
+        return payload;
+      }
+
+      if (Array.isArray(payload?.data)) {
+        return payload.data;
+      }
+
+      return [];
     },
     refetchInterval: 10000,
   });
@@ -46,10 +59,10 @@ export function Bots() {
       <h2>Bot Management</h2>
       
       <div className="bots-grid">
-        {(bots || []).map((bot: any) => (
+        {bots.map((bot: any) => (
           <Card key={bot.id} className="bot-card">
             <div className="bot-header">
-              <h3>{bot.botId?.slice(0, 12)}...</h3>
+              <h3>{bot.name || bot.botId?.slice(0, 12) || 'Unnamed bot'}</h3>
               <span className={`status-badge ${bot.status}`}>
                 {bot.status}
               </span>
@@ -58,15 +71,15 @@ export function Bots() {
             <div className="bot-info">
               <div className="info-row">
                 <span>Chain ID:</span>
-                <span>{bot.chainId}</span>
+                <span>{bot.chain || bot.chainId || '-'}</span>
               </div>
               <div className="info-row">
                 <span>Enabled:</span>
-                <span>{bot.enabled ? 'Yes' : 'No'}</span>
+                <span>{bot.status !== 'paused' ? 'Yes' : 'No'}</span>
               </div>
               <div className="info-row">
                 <span>Strategies:</span>
-                <span>{bot.strategies?.length || 0}</span>
+                <span>{bot.config?.strategies?.length || bot.strategies?.length || 0}</span>
               </div>
             </div>
             
@@ -90,7 +103,7 @@ export function Bots() {
           </Card>
         ))}
         
-        {(!bots || bots.length === 0) && (
+        {bots.length === 0 && (
           <Card className="empty-card">
             <div className="empty-state">No bots configured</div>
           </Card>
@@ -99,3 +112,5 @@ export function Bots() {
     </div>
   );
 }
+
+export default Bots;

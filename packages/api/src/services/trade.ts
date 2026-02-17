@@ -2,7 +2,7 @@
  * Trade service - business logic for trade execution
  */
 
-import type { TradeExecution, ApiResponse } from '@arbitrage/sdk';
+import type { TradeExecution, ApiResponse } from '../types.js';
 
 // In-memory storage (will be replaced with database)
 const trades: Map<string, TradeExecution> = new Map();

@@ -2,7 +2,7 @@
  * Bot service - business logic for bot management
  */
 
-import type { BotConfig, ApiResponse } from '@arbitrage/sdk';
+import type { BotConfig } from '../types.js';
 
 // In-memory storage (will be replaced with database)
 const bots: Map<string, BotConfig & { id: string; enabled: boolean; status: string }> = new Map();

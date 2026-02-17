@@ -105,7 +105,7 @@ export class BlockchainMonitor {
       for (const pool of this.config.pools) {
         const contract = new ethers.Contract(pool, swapEventABI, this.provider!);
 
-        contract.on('Swap', (sender, recipient, amount0, amount1, sqrtPriceX96, liquidity, tick, event) => {
+        contract.on('Swap', (_sender, _recipient, amount0, amount1, _sqrtPriceX96, _liquidity, _tick, event) => {
           this.handleSwapEvent(pool, amount0, amount1, event);
         });
 

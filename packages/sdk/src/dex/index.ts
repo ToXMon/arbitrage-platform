@@ -27,7 +27,7 @@ import { PancakeSwapV3Adapter } from './PancakeSwapV3';
 /**
  * DEX adapter registry
  */
-const adapters: Map<string, new (chain: ChainConfig) => DexAdapter> = new Map([
+const adapters: Map<string, new (chain: ChainConfig) => DexAdapter> = new Map<string, new (chain: ChainConfig) => DexAdapter>([
   ['uniswap-v3', UniswapV3Adapter],
   ['sushiswap', SushiSwapAdapter],
   ['pancakeswap-v3', PancakeSwapV3Adapter],

@@ -1,5 +1,9 @@
 require("@nomicfoundation/hardhat-toolbox");
-require("dotenv").config();
+const path = require("path");
+require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
+
+const sepoliaUrl = process.env.SEPOLIA_RPC || process.env.SEPOLIA_RPC_URL || process.env.ETH_RPC_URL || "";
+const privateKey = process.env.ETH_PRIVATE_KEY || process.env.PRIVATE_KEY;
 
 module.exports = {
   solidity: {
@@ -22,12 +26,12 @@ module.exports = {
       url: "http://127.0.0.1:8545"
     },
     sepolia: {
-      url: process.env.SEPOLIA_RPC_URL || "",
-      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : []
+      url: sepoliaUrl,
+      accounts: privateKey ? [privateKey] : []
     },
     mainnet: {
       url: process.env.MAINNET_RPC_URL || "",
-      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : []
+      accounts: privateKey ? [privateKey] : []
     }
   },
   paths: {

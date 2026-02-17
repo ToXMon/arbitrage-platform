@@ -2,7 +2,7 @@
  * Opportunity service - business logic for arbitrage opportunities
  */
 
-import type { ArbitrageOpportunity, ApiResponse } from '@arbitrage/sdk';
+import type { ArbitrageOpportunity, ApiResponse } from '../types.js';
 
 // In-memory storage (will be replaced with database)
 const opportunities: Map<string, ArbitrageOpportunity> = new Map();

@@ -18,6 +18,12 @@ export function Trades() {
     refetchInterval: 5000,
   });
 
+  const tradeList = Array.isArray(trades?.data)
+    ? trades.data
+    : Array.isArray(trades)
+      ? trades
+      : [];
+
   const cancelMutation = useMutation({
     mutationFn: async (tradeId: string) => {
       const res = await fetch(`/api/trades/${tradeId}/cancel`, { method: 'POST' });
@@ -47,24 +53,26 @@ export function Trades() {
       <Card>
         <Table
           headers={['ID', 'Opportunity', 'Status', 'Profit', 'Gas Used', 'Time', 'Actions']}
-          rows={(trades?.data || []).map((t: any) => [
+          rows={tradeList.map((t: any) => [
             t.opportunityId?.slice(0, 8) || '-',
             t.opportunityId?.slice(0, 10) + '...' || '-',
             <span style={{ color: statusColors[t.status] }}>{t.status}</span>,
             t.profit ? `${t.profit} wei` : '-',
             t.gasUsed ? `${t.gasUsed}` : '-',
-            new Date(t.timestamp).toLocaleString(),
+            new Date(t.createdAt || t.timestamp || Date.now()).toLocaleString(),
             t.status === 'pending' ? (
-              <button onClick={() => cancelMutation.mutate(t.opportunityId)}>
+              <button onClick={() => cancelMutation.mutate(t.id)}>
                 Cancel
               </button>
             ) : null,
           ])}
         />
-        {(!trades?.data || trades.data.length === 0) && (
+        {tradeList.length === 0 && (
           <div className="empty-state">No trades found</div>
         )}
       </Card>
     </div>
   );
 }
+
+export default Trades;

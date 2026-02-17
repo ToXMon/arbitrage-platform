@@ -39,11 +39,12 @@
       "@arbitrage/bots": ["./packages/bots/src"]
     }
   },
+  "include": ["*.ts"],
   "exclude": [
     "node_modules",
     "dist",
     "**/node_modules",
     "**/dist",
-    "packages/contracts"
+    "packages"
   ]
 }

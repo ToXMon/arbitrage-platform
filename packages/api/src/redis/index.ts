@@ -6,21 +6,18 @@ const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 // Publisher client for publishing events
 export const redisPublisher = new Redis(REDIS_URL, {
   maxRetriesPerRequest: 3,
-  retryDelayOnFailover: 100,
   lazyConnect: true,
 });
 
 // Subscriber client for listening to events
 export const redisSubscriber = new Redis(REDIS_URL, {
   maxRetriesPerRequest: null, // Unlimited retries for subscriber
-  retryDelayOnFailover: 100,
   lazyConnect: true,
 });
 
 // General purpose client for caching and other operations
 export const redis = new Redis(REDIS_URL, {
   maxRetriesPerRequest: 3,
-  retryDelayOnFailover: 100,
   lazyConnect: true,
 });
 

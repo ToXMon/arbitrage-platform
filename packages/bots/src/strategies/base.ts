@@ -39,7 +39,7 @@ export abstract class BaseStrategy {
   abstract readonly description: string;
 
   constructor(logger: Logger) {
-    this.logger = logger.child({ module: `strategy-${this.name}` });
+    this.logger = logger.child({ module: 'strategy' });
   }
 
   abstract evaluate(context: StrategyContext): Promise<StrategyResult>;

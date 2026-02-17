@@ -1,8 +1,8 @@
 import { FastifyInstance } from 'fastify';
 import { db, schema } from '../db/index.js';
-import { eq, desc, and, gte } from 'drizzle-orm';
-import { OpportunityQuerySchema, type ApiResponse, type Opportunity } from '../types/index.js';
-import type { OpportunityQuery } from '../types/index.js';
+import { eq, desc, and, gte, sql } from 'drizzle-orm';
+import { OpportunityQuerySchema, type ApiResponse, type Opportunity } from '../types.js';
+import type { OpportunityQuery } from '../types.js';
 
 export default async function opportunitiesRoutes(fastify: FastifyInstance) {
   // GET /opportunities - List arbitrage opportunities with filtering
@@ -31,7 +31,7 @@ export default async function opportunitiesRoutes(fastify: FastifyInstance) {
           conditions.push(eq(schema.opportunities.chain, chain));
         }
         if (minProfit) {
-          conditions.push(gte(schema.opportunities.expectedProfit, minProfit));
+          conditions.push(sql`CAST(${schema.opportunities.expectedProfit} AS REAL) >= ${minProfit}`);
         }
         
         const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
@@ -68,6 +68,47 @@ export default async function opportunitiesRoutes(fastify: FastifyInstance) {
         return reply.status(500).send({
           success: false,
           error: { code: 'DB_ERROR', message: 'Failed to fetch opportunities' },
+        });
+      }
+    }
+  );
+
+  // GET /opportunities/stats - Get opportunities statistics
+  fastify.get<{ Querystring: { chain?: string } }>(
+    '/opportunities/stats',
+    async (request, reply) => {
+      try {
+        const { chain } = request.query;
+        const whereClause = chain ? eq(schema.opportunities.chain, chain) : undefined;
+
+        const opportunities = await db
+          .select({
+            expectedProfit: schema.opportunities.expectedProfit,
+            executed: schema.opportunities.executed,
+          })
+          .from(schema.opportunities)
+          .where(whereClause);
+
+        const total = opportunities.length;
+        const available = opportunities.filter((opp) => !opp.executed).length;
+        const totalProfitUSD = opportunities.reduce(
+          (sum, opp) => sum + parseFloat(opp.expectedProfit || '0'),
+          0
+        );
+
+        return reply.send({
+          success: true,
+          data: {
+            total,
+            available,
+            avgProfitUSD: total > 0 ? totalProfitUSD / total : 0,
+          },
+        });
+      } catch (error) {
+        fastify.log.error(error);
+        return reply.status(500).send({
+          success: false,
+          error: { code: 'DB_ERROR', message: 'Failed to fetch opportunity statistics' },
         });
       }
     }

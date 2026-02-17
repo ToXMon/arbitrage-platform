@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
+import { WebSocket } from 'ws';
 import { registerRoutes } from './routes/index.js';
 import { closeDb, testConnection as testDbConnection } from './db/index.js';
 import {
@@ -9,7 +10,7 @@ import {
   redisSubscriber,
   CHANNELS,
 } from './redis/index.js';
-import type { WSMessage } from './types/index.js';
+import type { WSMessage } from './types.js';
 
 // Create Fastify instance
 const fastify = Fastify({
@@ -40,8 +41,9 @@ async function registerPlugins() {
 // WebSocket endpoint for real-time updates
 function setupWebSocket() {
   fastify.register(async function (fastify) {
-    fastify.get('/ws', { websocket: true }, (connection /* SocketStream */, req /* FastifyRequest */) => {     fastify.log.info('WebSocket client connected');
-      wsClients.add(connection.socket);
+    fastify.get('/ws', { websocket: true }, (socket: WebSocket) => {
+      fastify.log.info('WebSocket client connected');
+      wsClients.add(socket);
 
       // Send welcome message
       const welcomeMessage: WSMessage = {
@@ -49,17 +51,20 @@ function setupWebSocket() {
         payload: { message: 'Connected to arbitrage platform' },
         timestamp: Date.now(),
       };
-      connection.socket.send(JSON.stringify(welcomeMessage));
+      socket.send(JSON.stringify(welcomeMessage));
 
       // Handle incoming messages from client
-      connection.socket.on('message', (message: Buffer) => {
+      socket.on('message', (message: Buffer) => {
         try {
-          const data = JSON.parse(message.toString());
+          const data = JSON.parse(message.toString()) as {
+            type?: string;
+            channels?: unknown;
+          };
           fastify.log.debug({ data }, 'Received WebSocket message');
-          
+
           // Handle subscription requests
           if (data.type === 'subscribe') {
-            connection.socket.send(JSON.stringify({
+            socket.send(JSON.stringify({
               type: 'system',
               payload: { subscribed: data.channels },
               timestamp: Date.now(),
@@ -71,15 +76,15 @@ function setupWebSocket() {
       });
 
       // Handle client disconnect
-      connection.socket.on('close', () => {
+      socket.on('close', () => {
         fastify.log.info('WebSocket client disconnected');
-        wsClients.delete(connection.socket);
+        wsClients.delete(socket);
       });
 
       // Handle errors
-      connection.socket.on('error', (error) => {
+      socket.on('error', (error: Error) => {
         fastify.log.error({ error }, 'WebSocket error');
-        wsClients.delete(connection.socket);
+        wsClients.delete(socket);
       });
     });
   });
@@ -101,7 +106,7 @@ async function setupRedisBroadcast() {
     // Broadcast to all connected WebSocket clients
     const messageStr = JSON.stringify(wsMessage);
     wsClients.forEach((client) => {
-      if (client.readyState === 1) { // WebSocket.OPEN
+      if (client.readyState === WebSocket.OPEN) {
         client.send(messageStr);
       }
     });
@@ -142,7 +147,7 @@ function setupShutdown() {
     try {
       // Close all WebSocket connections
       wsClients.forEach((client) => {
-        if (client.readyState === 1) {
+        if (client.readyState === WebSocket.OPEN) {
           client.close(1001, 'Server shutting down');
         }
       });
@@ -204,7 +209,7 @@ async function start() {
 
     // Start listening
     const host = process.env.HOST || '0.0.0.0';
-    const port = parseInt(process.env.PORT || '3000', 10);
+    const port = parseInt(process.env.PORT || '3001', 10);
 
     await fastify.listen({ port, host });
     

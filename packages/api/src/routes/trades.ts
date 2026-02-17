@@ -2,9 +2,9 @@ import { FastifyInstance } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
 import { db, schema } from '../db/index.js';
 import { eq, desc, and } from 'drizzle-orm';
-import { ExecuteTradeSchema, TradeQuerySchema, type ApiResponse, type Trade } from '../types/index.js';
+import { ExecuteTradeSchema, TradeQuerySchema, type ApiResponse, type Trade } from '../types.js';
 import { publish, CHANNELS } from '../redis/index.js';
-import type { ExecuteTrade, TradeQuery } from '../types/index.js';
+import type { ExecuteTrade, TradeQuery } from '../types.js';
 
 export default async function tradesRoutes(fastify: FastifyInstance) {
   // GET /trades - List trade history with filtering
@@ -232,6 +232,73 @@ export default async function tradesRoutes(fastify: FastifyInstance) {
         return reply.status(500).send({
           success: false,
           error: { code: 'DB_ERROR', message: 'Failed to execute trade' },
+        });
+      }
+    }
+  );
+
+  // POST /trades/:id/cancel - Cancel a pending trade
+  fastify.post<{ Params: { id: string }; Reply: ApiResponse<Trade> }>(
+    '/trades/:id/cancel',
+    async (request, reply) => {
+      try {
+        const { id } = request.params;
+        const [trade] = await db
+          .select()
+          .from(schema.trades)
+          .where(eq(schema.trades.id, id));
+
+        if (!trade) {
+          return reply.status(404).send({
+            success: false,
+            error: { code: 'NOT_FOUND', message: 'Trade not found' },
+          });
+        }
+
+        if (trade.status !== 'pending') {
+          return reply.status(400).send({
+            success: false,
+            error: { code: 'NOT_CANCELLABLE', message: `Trade status is '${trade.status}', only pending trades can be cancelled` },
+          });
+        }
+
+        await db
+          .update(schema.trades)
+          .set({ status: 'failed', error: 'Cancelled by user' })
+          .where(eq(schema.trades.id, id));
+
+        // Un-execute the opportunity so it can be retried
+        if (trade.opportunityId) {
+          await db
+            .update(schema.opportunities)
+            .set({ executed: false })
+            .where(eq(schema.opportunities.id, trade.opportunityId));
+        }
+
+        await publish(CHANNELS.TRADES, {
+          type: 'trade_cancelled',
+          tradeId: id,
+          timestamp: Date.now(),
+        });
+
+        const [updatedTrade] = await db
+          .select()
+          .from(schema.trades)
+          .where(eq(schema.trades.id, id));
+
+        return reply.send({
+          success: true,
+          data: {
+            ...updatedTrade!,
+            createdAt: new Date(updatedTrade!.createdAt),
+            confirmedAt: updatedTrade!.confirmedAt ? new Date(updatedTrade!.confirmedAt) : null,
+          },
+        });
+      } catch (error) {
+        fastify.log.error(error);
+        return reply.status(500).send({
+          success: false,
+          error: { code: 'DB_ERROR', message: 'Failed to cancel trade' },
         });
       }
     }

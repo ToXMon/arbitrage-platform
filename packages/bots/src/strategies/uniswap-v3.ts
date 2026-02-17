@@ -18,7 +18,7 @@ export class UniswapV3ArbitrageStrategy extends BaseStrategy {
   }
 
   async evaluate(context: StrategyContext): Promise<StrategyResult> {
-    const { tokenIn, tokenOut, amountIn, chainId, gasPrice, poolReserves } = context;
+    const { tokenIn, tokenOut, amountIn, gasPrice, poolReserves } = context;
 
     if (!poolReserves) {
       return {

@@ -6,15 +6,6 @@
 import { Logger } from 'pino';
 import { BaseStrategy, StrategyContext, StrategyResult } from './base';
 
-interface TriangularPath {
-  token0: `0x${string}`;
-  token1: `0x${string}`;
-  token2: `0x${string}`;
-  rate01: bigint;
-  rate12: bigint;
-  rate20: bigint;
-}
-
 export class TriangularArbitrageStrategy extends BaseStrategy {
   readonly name = 'triangular-arbitrage';
   readonly description = 'Detects arbitrage through three-token cycles';
@@ -87,7 +78,7 @@ export class TriangularArbitrageStrategy extends BaseStrategy {
     tokenIn: `0x${string}`,
     tokenOut: `0x${string}`,
     amountIn: bigint,
-    chainId: number
+    _chainId: number
   ): Promise<{ finalAmount: bigint; path: `0x${string}`[] } | null> {
     // In production, this would:
     // 1. Query all DEX pools on chain

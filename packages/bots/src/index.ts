@@ -6,13 +6,12 @@ export * from './strategies';
 export * from './monitors';
 export * from './executors';
 
-import { StrategyManager } from './strategies';
-import { BlockchainMonitor, MonitorManager } from './monitors';
+import { MonitorManager } from './monitors';
 import { ExecutorEngine } from './executors';
-import { BotConfig } from '@arbitrage/sdk';
 import pino from 'pino';
 
 const logger = pino({
+  level: process.env.LOG_LEVEL || 'info',
   transport: {
     target: 'pino-pretty',
     options: { colorize: true },
@@ -24,8 +23,11 @@ export interface BotEngineOptions {
   redisUrl?: string;
 }
 
+export interface BotConfig {
+  chainId: number;
+}
+
 export class BotEngine {
-  private strategyManager: StrategyManager;
   private monitorManager: MonitorManager;
   private executorEngine: ExecutorEngine;
   private config: BotConfig;
@@ -33,7 +35,6 @@ export class BotEngine {
 
   constructor(options: BotEngineOptions) {
     this.config = options.config;
-    this.strategyManager = new StrategyManager(logger);
     this.monitorManager = new MonitorManager(logger, options.redisUrl);
     this.executorEngine = new ExecutorEngine(logger);
   }

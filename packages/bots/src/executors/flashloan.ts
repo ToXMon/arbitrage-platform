@@ -52,7 +52,7 @@ export class FlashLoanExecutor {
     }
   }
 
-  private async simulateFlashLoan(request: ExecutionRequest): Promise<void> {
+  private async simulateFlashLoan(_request: ExecutionRequest): Promise<void> {
     // Simulate flash loan execution
     await new Promise((resolve) => setTimeout(resolve, 200));
 

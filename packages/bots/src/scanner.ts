@@ -23,6 +23,9 @@ import { logger } from './index.js';
 const SWAP_EVENT_ABI = [
   'event Swap(address indexed sender, address indexed recipient, int256 amount0, int256 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick)',
 ];
+const SWAP_EVENT_TOPIC = ethers.id(
+  'Swap(address,address,int256,int256,uint160,uint128,int24)'
+);
 
 /**
  * ERC20 ABI for token info
@@ -32,6 +35,10 @@ const ERC20_ABI = [
   'function decimals() view returns (uint8)',
   'function name() view returns (string)',
   'function balanceOf(address) view returns (uint256)',
+];
+
+const V3_FACTORY_ABI = [
+  'function getPool(address tokenA, address tokenB, uint24 fee) external view returns (address)',
 ];
 
 /**
@@ -45,14 +52,6 @@ const POOL_ABI = [
   'function liquidity() view returns (uint128)',
   'function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, uint8 feeProtocol, bool unlocked)',
   'function getLiquidityByRange(int24 lowerTick, int24 upperTick) view returns (uint128)',
-];
-
-/**
- * Quoter ABI for price quotes
- */
-const QUOTER_ABI = [
-  'function quoteExactInputSingle((address tokenIn, address tokenOut, uint256 amountIn, uint24 fee, uint160 sqrtPriceLimitX96)) external returns (uint256 amountOut)',
-  'function quoteExactOutputSingle((address tokenIn, address tokenOut, uint256 amount, uint24 fee, uint160 sqrtPriceLimitX96)) external returns (uint256 amountIn)',
 ];
 
 /**
@@ -146,6 +145,7 @@ export interface ScannerConfig {
   priceDifferenceThreshold: number;
   useWebSocket: boolean;
   pollIntervalMs: number;
+  poolAddresses?: Record<string, string>;
 }
 
 /**
@@ -176,7 +176,6 @@ export class BlockScanner extends EventEmitter<ScannerEvents> {
   private pollTimer: NodeJS.Timeout | null = null;
   private reconnectAttempts: number = 0;
   private maxReconnectAttempts: number = 10;
-  private swapFilter: ethers.TopicFilter | null = null;
 
   constructor(config: ScannerConfig) {
     super();
@@ -203,7 +202,7 @@ export class BlockScanner extends EventEmitter<ScannerEvents> {
       logger.info(`Scanner initialized successfully for ${this.config.dexNames.length} DEXes`);
       this.emit('connected');
     } catch (error) {
-      logger.error('Failed to initialize scanner:', error);
+      logger.error({ error }, 'Failed to initialize scanner');
       this.emit('error', error as Error);
       throw error;
     }
@@ -220,12 +219,16 @@ export class BlockScanner extends EventEmitter<ScannerEvents> {
         this.provider = new WebSocketProvider(wsUrl);
 
         // Handle WebSocket errors and reconnection
-        (this.provider as WebSocketProvider).websocket.on('error', (error: Error) => {
-          logger.error('WebSocket error:', error);
+        const websocket = (this.provider as WebSocketProvider).websocket as {
+          on?: (event: string, listener: (...args: unknown[]) => void) => void;
+        };
+
+        websocket.on?.('error', (error: unknown) => {
+          logger.error({ error }, 'WebSocket error');
           this.handleDisconnect();
         });
 
-        (this.provider as WebSocketProvider).websocket.on('close', () => {
+        websocket.on?.('close', () => {
           logger.warn('WebSocket connection closed');
           this.handleDisconnect();
         });
@@ -233,7 +236,7 @@ export class BlockScanner extends EventEmitter<ScannerEvents> {
         logger.info('WebSocket provider initialized');
         return;
       } catch (error) {
-        logger.warn('Failed to connect via WebSocket, falling back to HTTP polling:', error);
+        logger.warn({ error }, 'Failed to connect via WebSocket, falling back to HTTP polling');
       }
     }
 
@@ -275,10 +278,13 @@ export class BlockScanner extends EventEmitter<ScannerEvents> {
     let name = config.name;
 
     try {
+      const symbolFn = contract.getFunction('symbol');
+      const decimalsFn = contract.getFunction('decimals');
+      const nameFn = contract.getFunction('name');
       [symbol, decimals, name] = await Promise.all([
-        contract.symbol(),
-        contract.decimals(),
-        contract.name(),
+        symbolFn.staticCall(),
+        decimalsFn.staticCall(),
+        nameFn.staticCall(),
       ]);
     } catch (error) {
       logger.warn(`Using config values for token ${config.address}`);
@@ -304,12 +310,15 @@ export class BlockScanner extends EventEmitter<ScannerEvents> {
     for (const dexName of this.config.dexNames) {
       try {
         const dexConfig = getDexConfig(this.config.chainId, dexName);
-        const poolAddress = await this.getPoolAddress(
-          dexConfig.factory,
-          this.token0.address,
-          this.token1.address,
-          this.config.poolFee
-        );
+        const overridePoolAddress = this.config.poolAddresses?.[dexName.toLowerCase()];
+        const poolAddress = overridePoolAddress
+          ? ethers.getAddress(overridePoolAddress.toLowerCase())
+          : await this.getPoolAddress(
+              dexConfig.factory,
+              this.token0.address,
+              this.token1.address,
+              this.config.poolFee
+            );
 
         if (!poolAddress) {
           logger.warn(`Pool not found for ${dexName}`);
@@ -330,7 +339,7 @@ export class BlockScanner extends EventEmitter<ScannerEvents> {
         this.pools.set(dexName.toLowerCase(), poolInfo);
         logger.info(`Pool initialized: ${dexConfig.name} at ${poolAddress}`);
       } catch (error) {
-        logger.error(`Failed to initialize pool for ${dexName}:`, error);
+        logger.error({ error, dexName }, 'Failed to initialize pool');
       }
     }
 
@@ -351,13 +360,47 @@ export class BlockScanner extends EventEmitter<ScannerEvents> {
     if (!this.provider) return null;
 
     try {
+      const factoryAddress = ethers.getAddress(factory.toLowerCase());
+      const token0Address = ethers.getAddress(token0.toLowerCase());
+      const token1Address = ethers.getAddress(token1.toLowerCase());
+
+      // Prefer asking the factory directly (more reliable across deployments)
+      try {
+        const factoryContract = new Contract(factoryAddress, V3_FACTORY_ABI, this.provider);
+        const getPoolFn = factoryContract.getFunction('getPool');
+        const poolFromFactory = (await getPoolFn.staticCall(token0Address, token1Address, fee)) as string;
+        const normalizedPool = poolFromFactory && poolFromFactory !== ethers.ZeroAddress
+          ? ethers.getAddress(poolFromFactory)
+          : null;
+
+        if (normalizedPool) {
+          const code = await this.provider.getCode(normalizedPool);
+          logger.debug(
+            {
+              factory: factoryAddress,
+              token0: token0Address,
+              token1: token1Address,
+              fee,
+              poolAddress: normalizedPool,
+              codeSize: code.length,
+            },
+            'Factory getPool result'
+          );
+          if (code !== '0x') {
+            return normalizedPool;
+          }
+        }
+      } catch (error) {
+        logger.debug({ error, factory: factoryAddress }, 'Factory getPool call failed; falling back to CREATE2');
+      }
+
       // Compute pool address deterministically
-      const [tokenA, tokenB] = token0.toLowerCase() < token1.toLowerCase() 
-        ? [token0, token1] 
-        : [token1, token0];
+      const [tokenA, tokenB] = token0Address.toLowerCase() < token1Address.toLowerCase()
+        ? [token0Address, token1Address]
+        : [token1Address, token0Address];
 
       const poolAddress = ethers.getCreate2Address(
-        factory,
+        factoryAddress,
         ethers.solidityPackedKeccak256(
           ['address', 'address', 'uint24'],
           [tokenA, tokenB, fee]
@@ -367,13 +410,24 @@ export class BlockScanner extends EventEmitter<ScannerEvents> {
 
       // Verify pool exists by checking code
       const code = await this.provider.getCode(poolAddress);
+      logger.debug(
+        {
+          factory: factoryAddress,
+          tokenA,
+          tokenB,
+          fee,
+          poolAddress,
+          codeSize: code.length,
+        },
+        'Computed pool address'
+      );
       if (code === '0x') {
         return null;
       }
 
       return poolAddress;
     } catch (error) {
-      logger.error('Error computing pool address:', error);
+      logger.error({ error }, 'Error computing pool address');
       return null;
     }
   }
@@ -407,21 +461,28 @@ export class BlockScanner extends EventEmitter<ScannerEvents> {
   private async startWebSocketScanning(): Promise<void> {
     logger.info('Starting WebSocket-based scanning');
 
+    if (!this.provider) {
+      throw new Error('Provider not initialized');
+    }
+
     // Subscribe to swap events on all pools
     for (const [dexName, pool] of this.pools) {
       try {
-        const filter = pool.contract.filters.Swap();
-        this.provider!.on(filter, (log: Log) => {
+        const filter = {
+          address: pool.address,
+          topics: [SWAP_EVENT_TOPIC],
+        };
+        this.provider.on(filter, (log: Log) => {
           this.handleSwapEvent(log, pool);
         });
         logger.info(`Subscribed to Swap events on ${pool.dexName}`);
       } catch (error) {
-        logger.error(`Failed to subscribe to ${dexName}:`, error);
+        logger.error({ error, dexName }, 'Failed to subscribe to pool');
       }
     }
 
     // Also subscribe to new blocks
-    this.provider!.on('block', (blockNumber: number) => {
+    this.provider.on('block', (blockNumber: number) => {
       this.lastBlockNumber = blockNumber;
       this.emit('block', blockNumber);
     });
@@ -433,11 +494,17 @@ export class BlockScanner extends EventEmitter<ScannerEvents> {
   private async startPollingScanning(): Promise<void> {
     logger.info(`Starting polling-based scanning (interval: ${this.config.pollIntervalMs}ms)`);
 
+    if (!this.provider) {
+      throw new Error('Provider not initialized');
+    }
+
+    const provider = this.provider;
+
     const poll = async () => {
       if (!this.isScanning) return;
 
       try {
-        const blockNumber = await this.provider!.getBlockNumber();
+        const blockNumber = await provider.getBlockNumber();
         
         if (blockNumber > this.lastBlockNumber) {
           this.lastBlockNumber = blockNumber;
@@ -447,7 +514,7 @@ export class BlockScanner extends EventEmitter<ScannerEvents> {
           await this.pollSwapEvents(blockNumber);
         }
       } catch (error) {
-        logger.error('Polling error:', error);
+        logger.error({ error }, 'Polling error');
         this.emit('error', error as Error);
       }
 
@@ -462,18 +529,26 @@ export class BlockScanner extends EventEmitter<ScannerEvents> {
    * Poll for swap events in recent blocks
    */
   private async pollSwapEvents(blockNumber: number): Promise<void> {
+    if (!this.provider) {
+      return;
+    }
+
     const fromBlock = Math.max(0, blockNumber - 3);
 
     for (const [dexName, pool] of this.pools) {
       try {
-        const filter = pool.contract.filters.Swap();
-        const events = await pool.contract.queryFilter(filter, fromBlock, blockNumber);
+        const events = await this.provider.getLogs({
+          address: pool.address,
+          topics: [SWAP_EVENT_TOPIC],
+          fromBlock,
+          toBlock: blockNumber,
+        });
 
         for (const event of events) {
-          await this.handleSwapEvent(event as Log, pool);
+          await this.handleSwapEvent(event, pool);
         }
       } catch (error) {
-        logger.error(`Error polling ${dexName}:`, error);
+        logger.error({ error, dexName }, 'Error polling pool logs');
       }
     }
   }
@@ -520,7 +595,7 @@ export class BlockScanner extends EventEmitter<ScannerEvents> {
       // Check for arbitrage opportunities
       await this.checkArbitrageOpportunity(swapEvent);
     } catch (error) {
-      logger.error('Error handling swap event:', error);
+      logger.error({ error }, 'Error handling swap event');
       this.emit('error', error as Error);
     } finally {
       this.isProcessingSwap = false;
@@ -589,7 +664,7 @@ export class BlockScanner extends EventEmitter<ScannerEvents> {
         }
       }
     } catch (error) {
-      logger.error('Error checking arbitrage opportunity:', error);
+      logger.error({ error }, 'Error checking arbitrage opportunity');
     }
   }
 
@@ -598,7 +673,8 @@ export class BlockScanner extends EventEmitter<ScannerEvents> {
    */
   private async calculatePrice(pool: PoolInfo): Promise<Big> {
     try {
-      const slot0 = await pool.contract.slot0();
+      const slot0Fn = pool.contract.getFunction('slot0');
+      const slot0 = await slot0Fn.staticCall();
       const sqrtPriceX96 = BigInt(slot0[0].toString());
 
       // Calculate price from sqrtPriceX96
@@ -613,7 +689,7 @@ export class BlockScanner extends EventEmitter<ScannerEvents> {
 
       return adjustedPrice;
     } catch (error) {
-      logger.error(`Error calculating price for ${pool.dexName}:`, error);
+      logger.error({ error, dexName: pool.dexName }, 'Error calculating price');
       return new Big(0);
     }
   }
@@ -630,7 +706,7 @@ export class BlockScanner extends EventEmitter<ScannerEvents> {
 
       setTimeout(() => {
         this.initialize().catch((error) => {
-          logger.error('Reconnection failed:', error);
+          logger.error({ error }, 'Reconnection failed');
         });
       }, 5000 * this.reconnectAttempts);
     } else {

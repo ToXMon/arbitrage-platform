@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { testConnection as testDbConnection } from '../db/index.js';
 import { testRedisConnection } from '../redis/index.js';
-import type { HealthResponse, ApiResponse } from '../types/index.js';
+import type { HealthResponse, ApiResponse } from '../types.js';
 
 const startTime = Date.now();
 const VERSION = '1.0.0';
@@ -14,10 +14,12 @@ export default async function healthRoutes(fastify: FastifyInstance) {
     ]);
 
     const allHealthy = dbConnected && redisConnected;
-    const status = allHealthy ? 'ok' : 'degraded';
+    const status: HealthResponse['status'] = allHealthy
+      ? 'ok'
+      : (dbConnected || redisConnected ? 'degraded' : 'error');
 
     const healthData: HealthResponse = {
-      status: allHealthy ? 'ok' : (dbConnected || redisConnected ? 'degraded' : 'error'),
+      status,
       timestamp: new Date().toISOString(),
       version: VERSION,
       uptime: Math.floor((Date.now() - startTime) / 1000),

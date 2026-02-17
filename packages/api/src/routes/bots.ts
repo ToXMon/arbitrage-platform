@@ -2,8 +2,8 @@ import { FastifyInstance, FastifyRequest } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
 import { db, schema } from '../db/index.js';
 import { eq, desc } from 'drizzle-orm';
-import { CreateBotSchema, UpdateBotSchema, type ApiResponse, type Bot } from '../types/index.js';
-import type { CreateBot, UpdateBot } from '../types/index.js';
+import { CreateBotSchema, UpdateBotSchema, type ApiResponse, type Bot } from '../types.js';
+import type { CreateBot, UpdateBot } from '../types.js';
 
 export default async function botsRoutes(fastify: FastifyInstance) {
   // GET /bots - List all bots
@@ -171,6 +171,102 @@ export default async function botsRoutes(fastify: FastifyInstance) {
         return reply.status(500).send({
           success: false,
           error: { code: 'DB_ERROR', message: 'Failed to update bot' },
+        });
+      }
+    }
+  );
+
+  // POST /bots/:id/start - Start a bot
+  fastify.post<{ Params: { id: string }; Reply: ApiResponse<Bot> }>(
+    '/bots/:id/start',
+    async (request, reply) => {
+      try {
+        const { id } = request.params;
+        const [bot] = await db.select().from(schema.bots).where(eq(schema.bots.id, id));
+
+        if (!bot) {
+          return reply.status(404).send({
+            success: false,
+            error: { code: 'NOT_FOUND', message: 'Bot not found' },
+          });
+        }
+
+        if (bot.status === 'running') {
+          return reply.status(400).send({
+            success: false,
+            error: { code: 'ALREADY_RUNNING', message: 'Bot is already running' },
+          });
+        }
+
+        const now = new Date();
+        await db
+          .update(schema.bots)
+          .set({ status: 'running', updatedAt: now })
+          .where(eq(schema.bots.id, id));
+
+        const [updatedBot] = await db.select().from(schema.bots).where(eq(schema.bots.id, id));
+
+        return reply.send({
+          success: true,
+          data: {
+            ...updatedBot!,
+            createdAt: new Date(updatedBot!.createdAt),
+            updatedAt: new Date(updatedBot!.updatedAt),
+          },
+        });
+      } catch (error) {
+        fastify.log.error(error);
+        return reply.status(500).send({
+          success: false,
+          error: { code: 'DB_ERROR', message: 'Failed to start bot' },
+        });
+      }
+    }
+  );
+
+  // POST /bots/:id/stop - Stop a bot
+  fastify.post<{ Params: { id: string }; Reply: ApiResponse<Bot> }>(
+    '/bots/:id/stop',
+    async (request, reply) => {
+      try {
+        const { id } = request.params;
+        const [bot] = await db.select().from(schema.bots).where(eq(schema.bots.id, id));
+
+        if (!bot) {
+          return reply.status(404).send({
+            success: false,
+            error: { code: 'NOT_FOUND', message: 'Bot not found' },
+          });
+        }
+
+        if (bot.status !== 'running') {
+          return reply.status(400).send({
+            success: false,
+            error: { code: 'NOT_RUNNING', message: 'Bot is not running' },
+          });
+        }
+
+        const now = new Date();
+        await db
+          .update(schema.bots)
+          .set({ status: 'idle', updatedAt: now })
+          .where(eq(schema.bots.id, id));
+
+        const [updatedBot] = await db.select().from(schema.bots).where(eq(schema.bots.id, id));
+
+        return reply.send({
+          success: true,
+          data: {
+            ...updatedBot!,
+            createdAt: new Date(updatedBot!.createdAt),
+            updatedAt: new Date(updatedBot!.updatedAt),
+          },
+        });
+      } catch (error) {
+        fastify.log.error(error);
+        return reply.status(500).send({
+          success: false,
+          error: { code: 'DB_ERROR', message: 'Failed to stop bot' },
         });
       }
     }
