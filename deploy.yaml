@@ -32,7 +32,7 @@ services:
           - service: bot-optimism
           - service: bot-base
     env:
-      - DATABASE_URL=postgresql://arbitrage:arbitrage123@postgres:5432/arbitrage_db
+      - DATABASE_URL=postgresql://arbitrage:${DB_PASSWORD}@postgres:5432/arbitrage_db
       - REDIS_URL=redis://redis:6379
       - NODE_ENV=production
       - PORT=3001
@@ -48,7 +48,7 @@ services:
       - CHAIN_NAME=ethereum
       - RPC_URL=https://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY
       - WS_URL=wss://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY
-      - DATABASE_URL=postgresql://arbitrage:arbitrage123@postgres:5432/arbitrage_db
+      - DATABASE_URL=postgresql://arbitrage:${DB_PASSWORD}@postgres:5432/arbitrage_db
       - REDIS_URL=redis://redis:6379
       - API_URL=http://api:3001
       - NODE_ENV=production
@@ -65,7 +65,7 @@ services:
       - CHAIN_NAME=arbitrum
       - RPC_URL=https://arb-mainnet.g.alchemy.com/v2/YOUR_API_KEY
       - WS_URL=wss://arb-mainnet.g.alchemy.com/v2/YOUR_API_KEY
-      - DATABASE_URL=postgresql://arbitrage:arbitrage123@postgres:5432/arbitrage_db
+      - DATABASE_URL=postgresql://arbitrage:${DB_PASSWORD}@postgres:5432/arbitrage_db
       - REDIS_URL=redis://redis:6379
       - API_URL=http://api:3001
       - NODE_ENV=production
@@ -82,7 +82,7 @@ services:
       - CHAIN_NAME=optimism
       - RPC_URL=https://opt-mainnet.g.alchemy.com/v2/YOUR_API_KEY
       - WS_URL=wss://opt-mainnet.g.alchemy.com/v2/YOUR_API_KEY
-      - DATABASE_URL=postgresql://arbitrage:arbitrage123@postgres:5432/arbitrage_db
+      - DATABASE_URL=postgresql://arbitrage:${DB_PASSWORD}@postgres:5432/arbitrage_db
       - REDIS_URL=redis://redis:6379
       - API_URL=http://api:3001
       - NODE_ENV=production
@@ -99,7 +99,7 @@ services:
       - CHAIN_NAME=base
       - RPC_URL=https://base-mainnet.g.alchemy.com/v2/YOUR_API_KEY
       - WS_URL=wss://base-mainnet.g.alchemy.com/v2/YOUR_API_KEY
-      - DATABASE_URL=postgresql://arbitrage:arbitrage123@postgres:5432/arbitrage_db
+      - DATABASE_URL=postgresql://arbitrage:${DB_PASSWORD}@postgres:5432/arbitrage_db
       - REDIS_URL=redis://redis:6379
       - API_URL=http://api:3001
       - NODE_ENV=production
@@ -121,7 +121,7 @@ services:
           - service: bot-base
     env:
       - POSTGRES_USER=arbitrage
-      - POSTGRES_PASSWORD=arbitrage123
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
       - POSTGRES_DB=arbitrage_db
       - PGDATA=/var/lib/postgresql/data/pgdata
     params:
