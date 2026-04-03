@@ -71,3 +71,6 @@ cache/
 *.pem
 *.key
 secrets/
+
+__pycache__
+target/

@@ -25,15 +25,11 @@ const main = async () => {
   const uPool = await getPoolContract(uniswap, token0.address, token1.address, POOL_FEE, provider)
   const pPool = await getPoolContract(pancakeswap, token0.address, token1.address, POOL_FEE, provider)
 
-  console.log(`Using ${token1.symbol}/${token0.symbol}\n`)
 
-  console.log(`Uniswap Pool Address: ${await uPool.getAddress()}`)
-  console.log(`Pancakeswap Pool Address: ${await pPool.getAddress()}\n`)
 
   uPool.on('Swap', () => eventHandler(uPool, pPool, token0, token1))
   pPool.on('Swap', () => eventHandler(uPool, pPool, token0, token1))
 
-  console.log("Waiting for swap event...\n")
 }
 
 const eventHandler = async (_uPool, _pPool, _token0, _token1) => {
@@ -44,8 +40,6 @@ const eventHandler = async (_uPool, _pPool, _token0, _token1) => {
     const exchangePath = await determineDirection(priceDifference)
 
     if (!exchangePath) {
-      console.log(`No Arbitrage Currently Available\n`)
-      console.log(`-----------------------------------------\n`)
       isExecuting = false
       return
     }
@@ -53,8 +47,6 @@ const eventHandler = async (_uPool, _pPool, _token0, _token1) => {
     const { isProfitable, amount } = await determineProfitability(exchangePath, _token0, _token1)
 
     if (!isProfitable) {
-      console.log(`No Arbitrage Currently Available\n`)
-      console.log(`-----------------------------------------\n`)
       isExecuting = false
       return
     }
@@ -63,14 +55,12 @@ const eventHandler = async (_uPool, _pPool, _token0, _token1) => {
 
     isExecuting = false
 
-    console.log("\nWaiting for swap event...\n")
   }
 }
 
 const checkPrice = async (_pools, _token0, _token1) => {
   isExecuting = true
 
-  console.log(`Swap Detected, Checking Price...\n`)
 
   const currentBlock = await provider.getBlockNumber()
 
@@ -81,30 +71,18 @@ const checkPrice = async (_pools, _token0, _token1) => {
   const pFPrice = Number(pPrice).toFixed(UNITS)
   const priceDifference = (((uFPrice - pFPrice) / pFPrice) * 100).toFixed(2)
 
-  console.log(`Current Block: ${currentBlock}`)
-  console.log(`-----------------------------------------`)
-  console.log(`UNISWAP     | ${_token1.symbol}/${_token0.symbol}\t | ${uFPrice}`)
-  console.log(`PANCAKESWAP | ${_token1.symbol}/${_token0.symbol}\t | ${pFPrice}\n`)
-  console.log(`Percentage Difference: ${priceDifference}%\n`)
 
   return priceDifference
 }
 
 const determineDirection = async (_priceDifference) => {
-  console.log(`Determining Direction...\n`)
 
   if (_priceDifference >= PRICE_DIFFERENCE) {
 
-    console.log(`Potential Arbitrage Direction:\n`)
-    console.log(`Buy\t -->\t ${uniswap.name}`)
-    console.log(`Sell\t -->\t ${pancakeswap.name}\n`)
     return [uniswap, pancakeswap]
 
   } else if (_priceDifference <= -(PRICE_DIFFERENCE)) {
 
-    console.log(`Potential Arbitrage Direction:\n`)
-    console.log(`Buy\t -->\t ${pancakeswap.name}`)
-    console.log(`Sell\t -->\t ${uniswap.name}\n`)
     return [pancakeswap, uniswap]
 
   } else {
@@ -113,7 +91,6 @@ const determineDirection = async (_priceDifference) => {
 }
 
 const determineProfitability = async (_exchangePath, _token0, _token1) => {
-  console.log(`Determining Profitability...\n`)
 
   // This is where you can customize your conditions on whether a profitable trade is possible...
 
@@ -160,8 +137,6 @@ const determineProfitability = async (_exchangePath, _token0, _token1) => {
     const amountIn = ethers.formatUnits(token0Needed, _token0.decimals)
     const amountOut = ethers.formatUnits(token0Returned, _token0.decimals)
 
-    console.log(`Estimated amount of ${_token0.symbol} needed to buy ${_token1.symbol} on ${_exchangePath[0].name}: ${amountIn}`)
-    console.log(`Estimated amount of ${_token0.symbol} returned after swapping ${_token1.symbol} on ${_exchangePath[1].name}: ${amountOut}\n`)
 
     const amountDifference = amountOut - amountIn
     const estimatedGasCost = GAS_LIMIT * GAS_PRICE
@@ -189,7 +164,6 @@ const determineProfitability = async (_exchangePath, _token0, _token1) => {
     }
 
     console.table(data)
-    console.log()
 
     // Setup conditions...
 
@@ -204,14 +178,11 @@ const determineProfitability = async (_exchangePath, _token0, _token1) => {
     return { isProfitable: true, amount: ethers.parseUnits(amountIn, _token0.decimals) }
 
   } catch (error) {
-    console.log(error)
-    console.log("")
     return { isProfitable: false, amount: 0 }
   }
 }
 
 const executeTrade = async (_exchangePath, _token0, _token1, _amount) => {
-  console.log(`Attempting Arbitrage...\n`)
 
   const routerPath = [
     await _exchangePath[0].router.getAddress(),
@@ -241,7 +212,6 @@ const executeTrade = async (_exchangePath, _token0, _token1, _amount) => {
     const receipt = await transaction.wait(0)
   }
 
-  console.log(`Trade Complete:\n`)
 
   // Fetch token balances after
   const tokenBalanceAfter = await _token0.contract.balanceOf(account.address)

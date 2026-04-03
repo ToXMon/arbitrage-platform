@@ -52,13 +52,6 @@ async function main() {
   const address = await arbitrage.getAddress();
   const deployTx = arbitrage.deploymentTransaction();
 
-  console.log("Deployer:", deployer.address);
-  console.log("Network:", hre.network.name);
-  console.log("Chain ID:", chainId);
-  console.log("Aave Provider:", AAVE_POOL_ADDRESSES_PROVIDER);
-  console.log("Balancer Vault:", BALANCER_VAULT);
-  console.log("Deploy TX:", deployTx ? deployTx.hash : "(unknown)");
-  console.log("Arbitrage deployed at:", address);
 }
 
 main().catch((error) => {

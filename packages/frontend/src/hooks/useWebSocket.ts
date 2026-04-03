@@ -24,12 +24,10 @@ export function useWebSocket(url: string) {
 
     socket.onopen = () => {
       setIsConnected(true);
-      console.log('WebSocket connected');
     };
 
     socket.onclose = () => {
       setIsConnected(false);
-      console.log('WebSocket disconnected');
       // Reconnect after 3 seconds
       setTimeout(connect, 3000);
     };

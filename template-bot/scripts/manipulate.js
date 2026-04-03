@@ -43,10 +43,7 @@ async function main() {
 }
 
 async function manipulatePrice(_path) {
-  console.log(`\nBeginning Swap...\n`)
 
-  console.log(`Input Token: ${_path[0].symbol}`)
-  console.log(`Output Token: ${_path[1].symbol}\n`)
 
   const fee = config.TOKENS.POOL_FEE
   const amount = hre.ethers.parseUnits(AMOUNT, _path[0].decimals)
@@ -78,7 +75,6 @@ async function manipulatePrice(_path) {
   );
   await swap.wait()
 
-  console.log(`Swap Complete!\n`)
 }
 
 main().catch((error) => {

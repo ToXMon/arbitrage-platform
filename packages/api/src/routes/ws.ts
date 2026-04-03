@@ -31,7 +31,6 @@ export async function wsHandler(
 
   // Add client to set
   clients.add(socket);
-  console.log(`WebSocket client connected. Total clients: ${clients.size}`);
 
   // Send welcome message
   socket.send(
@@ -61,7 +60,6 @@ export async function wsHandler(
   // Handle close
   socket.on('close', () => {
     clients.delete(socket);
-    console.log(`WebSocket client disconnected. Total clients: ${clients.size}`);
   });
 
   // Handle error
