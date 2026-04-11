@@ -96,6 +96,3 @@ redisPublisher.on('error', (err) => console.error('Redis Publisher Error:', err)
 redisSubscriber.on('error', (err) => console.error('Redis Subscriber Error:', err));
 redis.on('error', (err) => console.error('Redis Error:', err));
 
-redisPublisher.on('connect', () => console.log('Redis Publisher connected'));
-redisSubscriber.on('connect', () => console.log('Redis Subscriber connected'));
-redis.on('connect', () => console.log('Redis connected'));
